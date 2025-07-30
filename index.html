@@ -1,0 +1,177 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Modern Book Library</title>
+<style>
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    margin: 0;
+    padding: 1rem;
+    background: #f5f7fa;
+    color: #333;
+  }
+  h1 {
+    text-align: center;
+    margin-bottom: 1rem;
+    font-size: 2rem;
+  }
+  #search-bar {
+    width: 100%;
+    padding: 0.75rem;
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+  }
+  #book-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1rem;
+  }
+  .book-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.5rem;
+    transition: transform 0.2s ease;
+  }
+  .book-card:hover {
+    transform: scale(1.02);
+  }
+  .book-cover {
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+    border-radius: 4px;
+  }
+  .book-info {
+    text-align: center;
+    margin-top: 0.5rem;
+  }
+  .book-title {
+    font-weight: bold;
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+  }
+  .book-author {
+    font-style: italic;
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+  }
+  .book-isbn {
+    font-size: 0.8rem;
+    color: #666;
+  }
+  .remove-button {
+    margin-top: 0.5rem;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+</style>
+</head>
+<body>
+<h1>📚 My Book Library</h1>
+<input id="isbn-input" placeholder="Enter ISBN and press Enter to add book..." style="width: 100%; padding: 0.75rem; font-size: 1rem; margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 8px;" type="text"/><input id="search-bar" placeholder="Search by title, author, or ISBN..." type="text"/>
+<div id="book-grid"></div>
+<script>
+document.getElementById("isbn-input").addEventListener("keydown", async (e) => {
+  if (e.key === "Enter") {
+    const isbn = e.target.value.trim();
+    if (!isbn) return;
+    try {
+      const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+      const data = await res.json();
+      const bookData = data[`ISBN:${isbn}`];
+      if (!bookData) {
+        alert("Book not found.");
+        return;
+      }
+      const book = {
+        isbn: isbn,
+        title: bookData.title || "Unknown Title",
+        author: (bookData.authors && bookData.authors[0]?.name) || "Unknown Author",
+        coverUrl: bookData.cover?.medium || "",
+      };
+      const tx = db.transaction("books", "readwrite");
+      const store = tx.objectStore("books");
+      store.put(book);
+      tx.oncomplete = () => {
+        loadBooks(document.getElementById("search-bar").value.toLowerCase());
+        document.getElementById("isbn-input").value = "";
+      };
+    } catch (err) {
+      console.error("Error fetching book metadata:", err);
+    }
+  }
+});
+
+
+let db;
+const request = indexedDB.open("book-library", 1);
+request.onupgradeneeded = (event) => {
+  db = event.target.result;
+  db.createObjectStore("books", { keyPath: "isbn" });
+};
+request.onsuccess = (event) => {
+  db = event.target.result;
+  loadBooks();
+};
+
+document.getElementById("search-bar").addEventListener("input", (e) => {
+  const query = e.target.value.toLowerCase();
+  loadBooks(query);
+});
+
+function loadBooks(filter = "") {
+  const tx = db.transaction("books", "readonly");
+  const store = tx.objectStore("books");
+  const request = store.getAll();
+  request.onsuccess = () => {
+    const books = request.result;
+    const grid = document.getElementById("book-grid");
+    grid.innerHTML = "";
+    books
+      .filter(book =>
+        book.title.toLowerCase().includes(filter) ||
+        book.author.toLowerCase().includes(filter) ||
+        book.isbn.toLowerCase().includes(filter)
+      )
+      .forEach(book => {
+        const card = document.createElement("div");
+        card.className = "book-card";
+        card.innerHTML = `
+          <img class="book-cover" src="${book.coverUrl || ''}" alt="Cover"/>
+          <div class="book-info">
+            <div class="book-title">${book.title}</div>
+            <div class="book-author">${book.author}</div>
+            <div class="book-isbn">ISBN: ${book.isbn}</div>
+            <button class="remove-button" onclick="removeBook('${book.isbn}')">Remove</button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+  };
+}
+
+function removeBook(isbn) {
+  const tx = db.transaction("books", "readwrite");
+  const store = tx.objectStore("books");
+  store.delete(isbn);
+  tx.oncomplete = () => loadBooks(document.getElementById("search-bar").value.toLowerCase());
+}
+</script>
+</body>
+</html>
