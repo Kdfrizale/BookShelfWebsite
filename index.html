@@ -153,7 +153,7 @@ function loadBooks(filter = "") {
         const card = document.createElement("div");
         card.className = "book-card";
         card.innerHTML = `
-          <img class="book-cover" src="${book.coverUrl || ''}" alt="Cover"/>
+          <img loading="lazy" class="book-cover" src="${book.coverUrl || ''}" alt="Cover"/>
           <div class="book-info">
             <div class="book-title">${book.title}</div>
             <div class="book-author">${book.author}</div>
